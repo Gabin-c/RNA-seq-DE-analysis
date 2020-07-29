@@ -14,6 +14,7 @@ library(waiter)
 library(dashboardthemes)
 library(shinycssloaders)
 library(shinydashboardPlus)
+library(plotly)
 ### Files with all the function needed to make plots ----
 source("function_dds.R")
 
@@ -36,7 +37,9 @@ parameters_Annotation <- tagList(
                column(width= 6,
                       box(title="Upload annotation file",width = 12, solidHeader = TRUE,collapsible = TRUE,
                           column(width=5,selectInput("sep_Anno", "Separator:", c("Comma" = ",", "Tab" = "\t", "Semi-colon" = ";"))),
-                          fileInput("AnnotationFile", "Upload annotation file", accept = c(".csv",".txt",".tsv")))),
+                          fileInput("AnnotationFile", "Upload annotation file", accept = c(".csv",".txt",".tsv")),
+                          column(width=5,downloadButton("demoAnno",'Download example file',class = "btn-warning"))
+                      )),
                column(width= 6,     
                       box(
                         title = "Accepted files :", width = 12,
@@ -164,17 +167,29 @@ ui <-
                       column( 12, style="padding-left: 5em" ,withSpinner(tableOutput("annoExample"))),
                       h3("2. Results", style="padding-left: 1em"),
                       p("The results will be display after running DESeq2. You will obtain 9 differents results :", style="padding-left: 2em", align = "justify"),
-                      p("- Count distribution",
-                        br(), "- Count by gene",
-                        br(), "- Depth of sample",
-                        br(), "- Dispersion",
-                        br(), "- PCA",
-                        br(), "- MA plot",
-                        br(), "- Volcano plot",
-                        br(), "- Sample distance matrix",
-                        br(), "- Gene expression Heatmap",style="padding-left: 5em", align = "justify"),
+                      p("Exploration raw data :",
+                        br(),
+                        tags$ul(
+                          tags$li(" Count distribution"),
+                          tags$li( " Count by gene"),
+                          tags$li(" Depth of sample"),style="padding-left: 5em", align = "justify"),style="padding-left: 2em", align = "justify"),
+                        br(), 
+                      p("Check Normalization : ",
+                        tags$ul(
+                          tags$li( " Dispersion"),
+                          tags$li( " Depth of sample"),style="padding-left: 5em", align = "justify"),style="padding-left: 2em", align = "justify"),
+                        br(), 
+                      p("Différential expression results",
+                        tags$ul(
+                          tags$li( " MA plot"),
+                          tags$li( " Volcano plot"),style="padding-left: 5em", align = "justify"),style="padding-left: 2em", align = "justify"),
+                        br(), 
+                      p("Differences between samples",
+                        tags$ul(
+                          tags$li(" PCA"),
+                          tags$li( " Sample distance matrix"),
+                          tags$li( " Gene expression Heatmap"),style="padding-left: 5em", align = "justify"),style="padding-left: 2em", align = "justify"),
                       p("You can download all the results plots at the bottom of all these pages.",  style="padding-left: 2em", align = "justify")
-                      
                       )
                     ),
             ### Upload count table ----
@@ -194,7 +209,9 @@ ui <-
                            box(title="Upload count table",width = 12, solidHeader = TRUE,collapsible = TRUE,
                                column(width=5,
                                       selectInput("separator_Count", "Separator:", c("Comma" = ",", "Tab" = "\t", "Semi-colon" = ";"))),
-                               fileInput("CountDataTable", "Upload count table", accept = c(".csv",".txt",".tsv"))
+                               fileInput("CountDataTable", "Upload count table", accept = c(".csv",".txt",".tsv")),
+                               column(width=5,downloadButton("demoCount",'Download example file',class = "btn-warning"))
+                               
                            )),
                     column(width = 6,
                            box(
@@ -226,7 +243,9 @@ ui <-
                            box(title="Upload metadata table",width = 12, solidHeader = TRUE,collapsible = TRUE,
                                column(width=5,
                                       selectInput("separator_Metadata", "Separator:", c("Comma" = ",", "Tab" = "\t", "Semi-colon" = ";"))),
-                               fileInput("MetadataFile", "Upload metadata table", accept = c(".csv",".txt",".tsv"))
+                               fileInput("MetadataFile", "Upload metadata table", accept = c(".csv",".txt",".tsv")),
+                               column(width=5,downloadButton("demoMeta",'Download example file',class = "btn-warning"))
+                               
                            )),
                     column(width = 6,
                            box(
@@ -240,7 +259,9 @@ ui <-
                              )),
                     column(width = 12,
                            box(width = 12,
-                               selectInput("DesignDESeq2","Choose your design without linear combination", c("")))),
+                               selectInput("DesignDESeq2","Choose your design without linear combination", c("")),
+                               selectInput("Reference","Choose the reference", c(""))
+                              )),
                     dataTableOutput("MetaTable")
                     ),
 
@@ -277,7 +298,7 @@ ui <-
                     fluidPage(
                       box(width = 12, solidHeader = F,
                           HTML(" <center><h3>Here you gonna run DESeq2 workflow.</h3> </pre>
-                               <br><p> Check if your design chosen previously is correct.
+                               <br><p> Check if the design and the reference chosen previously are correct.
                                   <br>
                                <br><h7>The process will take a few seconds.</h7></center>")),
                       box(width = 12,
@@ -362,6 +383,70 @@ ui <-
                            downloadButton("downloadDepth",'Download plot',class = "btn-warning")
                     )
             ),
+   
+            ### Dispersion plot ----
+            ### On this page we find dispersion plot after running DESeq
+            ### We find :
+            ###     - a box() which countain :
+            ###         - return of dispersion.plot 
+            ###     - a downloadButton to download  the generate plot
+            tabItem(tabName = "Dispersion",
+                    box(width = 12,
+                        title = "Dispersion", solidHeader = T, status = "primary",collapsible = TRUE,
+                        withSpinner(plotOutput("dispersionPlot",height = 650))),
+                    column(width= 4,
+                           downloadButton("downloadDispersion",'Download plot',class = "btn-warning")
+                    )
+            ),
+            
+            
+            ### MA plot ----
+            ### On this page we find MA plot and it parameters after running DESeq
+            ### We find :
+            ###     - a box() which countain :
+            ###         - sliderInput of P.value which set p.val of ma.plot function
+            ###         - a tableOutput() of number.DE.gene function
+            ###     - a box() which countain :
+            ###         - return of ma.plot 
+            ###     - a downloadButton to download  the generate plot
+            tabItem(tabName = "MAplot",
+                    box(width = 12,
+                        title = "MA plot", solidHeader = T, status = "primary",collapsible = TRUE,
+                        checkboxInput("annotationMA","Do you have an annotation file ?",value=FALSE),
+                        sliderInput("pvalueMAplot", "Choose your pvalue", min=0, max=1, value=0.05),
+                        tableOutput("numberDEgenes"),
+                        uiOutput("annoMA")
+                    ),
+                    box(solidHeader = F, status = "primary",width = 12,
+                        withSpinner(plotlyOutput("MAplot",height = 650))),
+                    column(width= 4,
+                           downloadButton("downloadMaplot",'Download plot',class = "btn-warning"))
+            ),
+            ### Volcano plot ----
+            ### On this page we find MA plot and it parameters after running DESeq
+            ### We find :
+            ###     - a box() which countain :
+            ###         - sliderInput of P.value which set p.val of volcano.plot function
+            ###         - a checkbox Yes/No if there an annotation
+            ###              - if check Yes uiOutput("sliderFoldVolcano") and uiOutput("SliderLogVolcanon") appear
+            ###     - a box() which countain :
+            ###         - return of volcano.plot 
+            ###     - a downloadButton to download  the generate plot
+            tabItem(tabName = "Volcanoplot",
+                    fluidPage(
+                      box(width = 12,
+                          title = "Volcano plot", solidHeader = T, status = "primary",collapsible = TRUE,
+                          checkboxInput("annotationVolcano","Do you have an annotation file ?",value=FALSE),
+                          sliderInput("pvalueVolcano", "Choose your pvalue", min=0, max=1, value=0.05),
+                          uiOutput("AnnoVolcano")
+                      ),
+                      box( solidHeader = F, status = "primary",width = 12,
+                           withSpinner(plotlyOutput("volcanoPlot",height = 650))),
+                      column(width= 4,
+                             downloadButton("downloadVolcano",'Download plot',class = "btn-warning")))
+            ),
+            
+            
             ### PCA plot ----
             ### On this page we find PCA plot and it parameters after running DESeq
             ### We find :
@@ -386,65 +471,7 @@ ui <-
                            downloadButton("downloadPCA",'Download plot',class = "btn-warning")
                     )
             ),
-            ### Dispersion plot ----
-            ### On this page we find dispersion plot after running DESeq
-            ### We find :
-            ###     - a box() which countain :
-            ###         - return of dispersion.plot 
-            ###     - a downloadButton to download  the generate plot
-            tabItem(tabName = "Dispersion",
-                    box(width = 12,
-                        title = "Dispersion", solidHeader = T, status = "primary",collapsible = TRUE,
-                        withSpinner(plotOutput("dispersionPlot",height = 650))),
-                    column(width= 4,
-                           downloadButton("downloadDispersion",'Download plot',class = "btn-warning")
-                    )
-            ),
-            ### MA plot ----
-            ### On this page we find MA plot and it parameters after running DESeq
-            ### We find :
-            ###     - a box() which countain :
-            ###         - sliderInput of P.value which set p.val of ma.plot function
-            ###         - a tableOutput() of number.DE.gene function
-            ###     - a box() which countain :
-            ###         - return of ma.plot 
-            ###     - a downloadButton to download  the generate plot
-            tabItem(tabName = "MAplot",
-                    box(width = 12,
-                        title = "MA plot", solidHeader = T, status = "primary",collapsible = TRUE,
-                        sliderInput("pvalueMAplot", "Choose your pvalue", min=0, max=1, value=0.05),
-                        tableOutput("numberDEgenes")
-                    ),
-                    box(solidHeader = F, status = "primary",width = 12,
-                        withSpinner(plotOutput("MAplot",height = 650))),
-                    column(width= 4,
-                           downloadButton("downloadMaplot",'Download plot',class = "btn-warning"))
-            ),
-            ### Volcano plot ----
-            ### On this page we find MA plot and it parameters after running DESeq
-            ### We find :
-            ###     - a box() which countain :
-            ###         - sliderInput of P.value which set p.val of volcano.plot function
-            ###         - a checkbox Yes/No if there an annotation
-            ###              - if check Yes uiOutput("sliderFoldVolcano") and uiOutput("SliderLogVolcanon") appear
-            ###     - a box() which countain :
-            ###         - return of volcano.plot 
-            ###     - a downloadButton to download  the generate plot
-            tabItem(tabName = "Volcanoplot",
-                    fluidPage(
-                      box(width = 12,
-                          title = "Volcano plot", solidHeader = T, status = "primary",collapsible = TRUE,
-                          checkboxInput("annotationVolcano","Do you have an annotation file ?",value=FALSE),
-                          sliderInput("pvalueVolcano", "Choose your pvalue", min=0, max=1, value=0.05),
-                          uiOutput("AnnoVolcano"),
-                          uiOutput("SliderFoldVolcano"),
-                          uiOutput("SliderLogVolcano")
-                      ),
-                      box( solidHeader = F, status = "primary",width = 12,
-                           withSpinner(plotOutput("volcanoPlot",height = 650))),
-                      column(width= 4,
-                             downloadButton("downloadVolcano",'Download plot',class = "btn-warning")))
-            ),
+            
             
             
             ### sample distance matrix heat map ----
@@ -463,7 +490,7 @@ ui <-
                         selectInput("TransformationMatrix",label= "Choose your transformation",choices = c("Variance-stabilizing transformation"="vst","Log transformation"="rld")),
                         actionButton("RunMatrix","Run Heat map")),
                     box(solidHeader = F, status = "primary",width = 12, align = "center",
-                        withSpinner(plotOutput("DistanceMatrixMap",height = 650))
+                        withSpinner(plotlyOutput("DistanceMatrixMap",height = 650))
                     ),
                     column(width= 4,
                            downloadButton("downloadDistanceMatrix",'Download plot',class = "btn-warning")
@@ -516,7 +543,7 @@ ui <-
            <p align="center" width="4">Developed by <a href="https://www.linkedin.com/in/david-gallien-2096b9193/" target="_blank">David Gallien</a> and <a href="https://www.linkedin.com/in/gabin-coudray-a1941913b/" target="_blank">Gabin Coudray</a>. </p>
            <p align="center" width="4">First year of <a href="http://bioinfo-rennes.fr/" target="_blank">Bioinformatics Master<span>&#39;</span>s degree</a> in Rennes. </p>
            <p align="center" width="4"> <a href="https://www.univ-rennes1.fr/" target="_blank">University of Rennes 1.</a> </p>
-           <p align="center" width="4"> Git : <a href="https://github.com/Gabin-c/M1project" target="_blank">https://github.com/Gabin-c/M1project</a> </p>'
+           <p align="center" width="4"> Git : <a href="https://github.com/Gabin-c/RNA-seq-DE-analysis" target="_blank">https://github.com/Gabin-c/RNA-seq-DE-analysis</a> </p>'
 
       ), 
       style = 
