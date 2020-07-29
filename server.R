@@ -42,6 +42,7 @@ server <- function(input, output,session) {
   metadata <- reactive({
     req(input$MetadataFile)
     meta_table <- read.csv(input$MetadataFile$datapath, sep = input$separator_Metadata, row.names=NULL)
+    
   })
   ### Display the metadata file ----
   output$MetaTable <- DT::renderDataTable(metadata(),options = list(pageLength = 20, autoWidth = FALSE,scrollX = TRUE, scrollY = '300px'))
@@ -71,9 +72,13 @@ server <- function(input, output,session) {
   
   ### Update selectinput with columns of notUniqueValue() for the DESeq2 design
   observeEvent(input$MetadataFile,{
-    updateSelectInput(session,"DesignDESeq2", choices = paste("~ ",paste(colnames(notUniqueValue()))))
+    updateSelectInput(session,"DesignDESeq2", choices = paste(colnames(notUniqueValue())))
   })
   
+  observeEvent(req(input$DesignDESeq2),{
+    updateSelectInput(session,"Reference", choices = metadata()[,input$DesignDESeq2])
+  })
+
 
   
   
@@ -116,9 +121,13 @@ server <- function(input, output,session) {
     waiter$show()
     
     ### DESeq2 process 
-    dds$dds <- DESeqDataSetFromMatrix(count_table(),colData=metadata(),design=as.formula(input$DesignDESeq2), tidy=TRUE)
+    
+    dds$dds <- DESeqDataSetFromMatrix(count_table(),colData=metadata(),design=as.formula(paste("~",paste(input$DesignDESeq2))), tidy=TRUE)
+    colData(dds$dds)[,input$DesignDESeq2] <- relevel(colData(dds$dds)[,input$DesignDESeq2], ref = input$Reference)
+
     dds$DESeq2 <- DESeq(dds$dds)
     dds$results <- results(dds$DESeq2,tidy=TRUE)
+
     
     ### Display success message after running DESeq2
     output$SuccessMessage <- renderUI({
@@ -134,10 +143,10 @@ server <- function(input, output,session) {
     updateSelectizeInput(session,"gene",choices = count_table()[,1], server = TRUE)
     
     ### Factor choices for PCA
-    updateSelectInput(session,"conditionpca",choices = colnames(metadata()))
+    updateSelectInput(session,"conditionpca",choices = colnames(notUniqueValue()))
     
     ### Factor choices heatmap
-    updateSelectInput(session,"conditionHeatmap",choices = colnames(metadata()))
+    updateSelectInput(session,"conditionHeatmap",choices = colnames(notUniqueValue()))
     
     
     ### Counts data frame normalized or not
@@ -156,9 +165,9 @@ server <- function(input, output,session) {
                                                  menuSubItem("Count by gene", tabName = "Count_Gene",icon = icon("far fa-check-square")),
                                                  menuSubItem("Depth of sample",tabName = "Depth",icon = icon("far fa-check-square")),
                                                  menuSubItem("Dispersion",tabName = "Dispersion",icon = icon("far fa-check-square")),
-                                                 menuPCA(),
                                                  menuSubItem("MA Plot",tabName = "MAplot",icon = icon("far fa-check-square")),
                                                  menuSubItem("Volcano Plot",tabName = "Volcanoplot",icon = icon("far fa-check-square")),
+                                                 menuPCA(),
                                                  menuDistanceMatrix(),
                                                  menuHeatmap()
     )  
@@ -315,15 +324,34 @@ server <- function(input, output,session) {
   
 
   ### MA plot ----
+  observeEvent(input$annotationMA,{
+    if(input$CheckAnnotation== FALSE){
+      if(input$annotationMA==TRUE){
+        output$annoMA <- renderUI({
+          HTML("<center><h3> You don't have annotation file. </h3></center>")
+        })
+      }}
+    if(input$CheckAnnotation== FALSE){
+      if(input$annotationMA==FALSE){
+        output$annoMA <- renderUI({})
+      }}
+    if(input$CheckAnnotation== TRUE){
+      if(input$annotationMA==TRUE){
+        output$annoMA <- renderUI({})}
+        }
+    })
   ### Display MA plot using ma.plot() function from function_dds.R
   MAplotFunction <- function(){
-    ma.plot(dds$results,p.val=input$pvalueMAplot)
+    ma.plot(dds$results,p.val=input$pvalueMAplot, is.anno = input$annotationMA, anno = anno(),count.tb=colnames(count_table()))
   }
-  output$MAplot <- renderPlot({
+  ma <- reactiveValues()
+  output$MAplot <- renderPlotly({
     validate(
       need(dds$results, "Please run DESeq2")
     )
-    MAplotFunction()
+    ma$ma<- MAplotFunction()
+    ma$ma
+    
   })
   ### Display a table with the number of differential expressed genes
   output$numberDEgenes <- renderTable({
@@ -331,11 +359,15 @@ server <- function(input, output,session) {
   })
   ### Download MAplot in .png format
   output$downloadMaplot <- downloadHandler(
-    filename = "Maplot.png",
-    content = function(file){
-      ggsave(file, plot = MAplotFunction(), device = "png")
+    filename = function() {
+      paste("MAplot", ".html", sep = "")
+    },
+    content = function(file) {
+      # export plotly html widget as a temp file to download.
+      saveWidget(as_widget(ma$ma), file, selfcontained = TRUE)
     }
   )
+
   
   ### Volcano plot ----
   ### Display parameters for volcano 
@@ -343,25 +375,16 @@ server <- function(input, output,session) {
   observeEvent(input$annotationVolcano,{
     if(input$CheckAnnotation== TRUE){
       if(input$annotationVolcano==TRUE){
-      output$SliderFoldVolcano <- renderUI({ 
-        sliderInput("sliderfold", "Choose your fold", min=-20, max=20, value=c(-6,6))
-      })
-      output$SliderLogVolcano <- renderUI({ 
-        sliderInput("sliderlog", "Choose your log10", min=0, max=300, value=30)
-      })
+        output$AnnoVolcano <- renderUI({})
     }}
     if(input$CheckAnnotation== FALSE){
       if(input$annotationVolcano==TRUE){
-      output$SliderFoldVolcano <- renderUI({})
-      output$SliderLogVolcano <- renderUI({})
       output$AnnoVolcano <- renderUI({
         HTML("<center><h3> You don't have annotation file. </h3></center>")
       })
       }}
     if(input$CheckAnnotation== FALSE){
       if(input$annotationVolcano==FALSE){
-        output$SliderFoldVolcano <- renderUI({})
-        output$SliderLogVolcano <- renderUI({})
         output$AnnoVolcano <- renderUI({})
       }}
   })
@@ -370,17 +393,22 @@ server <- function(input, output,session) {
   VolcanoplotFunction <- function(){
     volcano.plot(dds$results,is.anno = input$annotationVolcano, anno = anno() ,p.val=input$pvalueVolcano,minlogF=input$sliderfold[1], maxlogF=input$sliderfold[2], minlogP=input$sliderlog,count.tb=colnames(count_table()))
   }
-  output$volcanoPlot <- renderPlot({
+  volca <- reactiveValues()
+  output$volcanoPlot <- renderPlotly({
     validate(
       need(dds$results, "Please run DESeq2")
     )
-    VolcanoplotFunction()
+    volca$volca <- VolcanoplotFunction()
+    volca$volca
   })
   ### Download Volcano plot in .png format
   output$downloadVolcano <- downloadHandler(
-    filename = "Volcanoplot.png",
-    content = function(file){
-      ggsave(file, plot = VolcanoplotFunction(), device = "png")
+    filename = function() {
+      paste("Volcanoplot", ".html", sep = "")
+    },
+    content = function(file) {
+      # export plotly html widget as a temp file to download.
+      saveWidget(as_widget(volca$volca), file, selfcontained = TRUE)
     }
   )
   
@@ -398,25 +426,28 @@ server <- function(input, output,session) {
   distanceCluster <- function(){
     distance.matrix.heatmap(dds$TransformationMatrix)
   }
-  output$DistanceMatrixMap <- renderPlot({
+  distMat <- reactiveValues()
+  output$DistanceMatrixMap <- renderPlotly({
     withProgress(message = "Running heatmap , please wait",{
       validate(
         need(dds$TransformationMatrix, "Please run DESeq2 and Heat map")
       )
-      distanceCluster()
+      distMat$Mat <- distanceCluster()
+      distMat$Mat
     })})
   ### Download distance matrix in .png format
   output$downloadDistanceMatrix <- downloadHandler(
-    filename = "DistanceMatrix.png",
+    filename = 
+      function() {
+        paste("DistanceMatrix", ".html", sep = "")
+      },
     content = function(file){
-      png(file)
-      distanceCluster()
-      dev.off()
+      saveWidget(as_widget(distMat$Mat), file, selfcontained = TRUE)
     }
   )
   
   ### Gene expression heatmap ----
-  ### Chose vst or rlog transformation
+  ### Chose vst or rlog transformation ----
   observeEvent(input$RunHeatmap,{
     if(input$TransformationHeatmap=="vst"){
       dds$TransformationHeatmap <- vst(dds$DESeq2, blind=FALSE)
@@ -548,5 +579,29 @@ server <- function(input, output,session) {
       menuSubItem("Gene expression Heatmap",tabName = "Heatmap")
     }
   })
+  
+  output$demoCount <- downloadHandler(
+    filename = function(){
+      paste("countTable.csv")
+    },
+    content = function(con){
+      file.copy("airway_scaledcounts.csv", con)
+    })
+  
+  output$demoMeta <- downloadHandler(
+    filename = function(){
+      paste("metadataTable.csv")
+    },
+    content = function(con){
+      file.copy("airway_metadata.csv", con)
+    })
+  
+  output$demoAnno <- downloadHandler(
+    filename = function(){
+      paste("annoTable.csv")
+    },
+    content = function(con){
+      file.copy("annotables_grch38.csv", con)
+    })
   
 }
